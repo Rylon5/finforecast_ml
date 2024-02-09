@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import keras
 from keras import Sequential
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from keras.src.layers import LSTM, Dense
@@ -18,19 +18,19 @@ pd.set_option('display.max_colwidth', None)
 
 scaler = MinMaxScaler()
 train_ticker = ['GOOG']
-train_tickers = ['GOOG', 'FLOT', 'TRI', 'DDD', 'WVVI', 'AZO', 'UNP', 'RY', 'RRR', 'CSIQ', 'STG', 'ARVL', 'SGN', 'REFI',
-                 'CDRO', 'SDPI', 'SQFTP', 'AXTI', 'MODD', 'TETEU', 'LBTYB', 'SNTI', 'GABK', 'EVCM', 'ADN', 'WWR']
-test_ticker = 'CYRX'
+train_tickers = ['NVR', 'AZO', 'AVGO', 'ADBE', 'MSFT', 'GOOG', 'TEAM', 'HLT', 'AMZN', 'GRMN', 'OTTR', 'TEX', 'CSCO',
+                 'BEPC', 'PSO', 'INFN', 'KODK', 'KRON', 'AMBO', 'WF', 'OBK', 'VVV', 'VET', 'DDD', 'CTRA', 'RRR', 'CSIQ']
+test_ticker = ['GRIN', 'BHR', 'DEEF', 'WGS', 'CHT', 'BFRG', 'AORT', 'NI', 'LEGN', 'AACT']
 
 
 def main():
     data = get_data(train_ticker)
     data_mult = get_data(train_tickers)
-    init_scaler(data_mult['Close'])
+    init_scaler(pd.concat((data_mult, get_data(test_ticker)))['Close'])
     # train_model_single(data)
-    # train_model_mult(data_mult)
+    train_model_mult(data_mult)
     # predict_on_new_dataset(model=keras.saving.load_model('finforecast_single_model.keras'), ticker_symbol=test_ticker)
-    predict_on_new_dataset(model=keras.saving.load_model('finforecast_mult_model.keras'), ticker_symbol=test_ticker)
+    predict_on_new_dataset(model=keras.saving.load_model('finforecast_mult_model.keras'), ticker_symbols=test_ticker)
 
 
 def get_data(ticker_symbols: [str]) -> pd.DataFrame:
@@ -40,7 +40,7 @@ def get_data(ticker_symbols: [str]) -> pd.DataFrame:
     """
     data = pd.DataFrame()
     for ticker_symbol in ticker_symbols:
-        data = pd.concat((data, yf.Ticker(ticker_symbol).history(period='4y', interval='1d')))
+        data = pd.concat((data, yf.Ticker(ticker_symbol).history(period='5y', interval='1d')))
     data = data.dropna(axis=1)
     data = data[['Open', 'High', 'Low', 'Volume', 'Dividends', 'Stock Splits', 'Close']]
     return data
@@ -52,6 +52,8 @@ def init_scaler(data: pd.DataFrame):
     :param data: dataframe with data to init the scaler on
     :return:
     """
+    # num = np.arange(-100, 8000)
+    # scaler.fit(num.reshape(-1, 1))
     scaler.fit(np.array(data).reshape(-1, 1))
 
 
@@ -77,12 +79,12 @@ def build_model(data: pd.DataFrame) -> Sequential:
     model.add(LSTM(units=50, return_sequences=True))
     model.add(LSTM(units=50))
     model.add(Dense(units=1))
-    model.compile(loss='mean_squared_error', optimizer='adam')
-    model.fit(x_train, y_train, epochs=100)
+    model.compile(loss='mean_squared_error', optimizer='adam', metrics=['mape'])
+    model.fit(x_train, y_train, epochs=75)
 
     # evaluate the model
     test_loss = model.evaluate(x_test, y_test)
-    print('Test loss = %f' % np.sqrt(test_loss))
+    print('Test loss = %f \nMAPE = %f %%' % (np.sqrt(test_loss[0]), test_loss[1]))
 
     # testing model and visualizing tests
     y_pred = model.predict(x_test)
@@ -123,27 +125,37 @@ def train_model_mult(data: pd.DataFrame):
     model.save('finforecast_mult_model.keras')
 
 
-def predict_on_new_dataset(model: Sequential, ticker_symbol: str):
+def predict_on_new_dataset(model: Sequential, ticker_symbols: [str]):
     """
     test the model on new dataset and visualize the predicted values
     :param model: trained model
-    :param ticker_symbol: ticker symbol of the new dataset
+    :param ticker_symbols: ticker symbol of the new dataset
     :return:
     """
-    ticker_test_forecast = get_data([ticker_symbol])
-    x_test_forecast = ticker_test_forecast.drop('Close', axis=1)
-    y_pred_test_forecast = model.predict(x_test_forecast)
-    y_pred_test_forecast = scaler.inverse_transform(np.array(y_pred_test_forecast).reshape(-1, 1))
-    x_test_forecast['Close'] = y_pred_test_forecast
-    y_test_forecast = ticker_test_forecast['Close']
-    plt.plot(y_test_forecast, label='Actual', color='green')
-    plt.plot(x_test_forecast['Close'], label='Predicted', alpha=0.7, color='red')
-    plt.title(ticker_symbol)
-    plt.legend()
-    plt.show()
-    rmse = np.sqrt(mean_squared_error(y_test_forecast, y_pred_test_forecast))
-    mae = mean_absolute_error(y_test_forecast, y_pred_test_forecast)
-    print('RMSE = %f, MAE = %f' % (rmse, mae))
+    rmse_cum, mae_cum, mape_cum = 0, 0, 0
+    for ticker in ticker_symbols:
+        ticker_test_forecast = get_data([ticker])
+        x_test_forecast = ticker_test_forecast.drop('Close', axis=1)
+        y_pred_test_forecast = model.predict(x_test_forecast)
+        y_pred_test_forecast = scaler.inverse_transform(np.array(y_pred_test_forecast).reshape(-1, 1))
+        x_test_forecast['Close'] = y_pred_test_forecast
+        y_test_forecast = ticker_test_forecast['Close']
+        plt.figure(figsize=(10, 7.5))
+        plt.plot(y_test_forecast, label='Actual', color='green')
+        plt.plot(x_test_forecast['Close'], label='Predicted', alpha=0.7, color='red')
+        plt.title(ticker)
+        plt.legend()
+        plt.show()
+        rmse = np.sqrt(mean_squared_error(y_test_forecast, y_pred_test_forecast))
+        mae = mean_absolute_error(y_test_forecast, y_pred_test_forecast)
+        mape = mean_absolute_percentage_error(y_test_forecast, y_pred_test_forecast) * 100
+        rmse_cum = rmse_cum + rmse
+        mae_cum = mae_cum + mae
+        mape_cum = mape_cum + mape
+        print('Ticker = %s \nRMSE = %f \nMAE = %f \nMAPE = %f %%' % (ticker, rmse, mae, mape))
+    print('Mean RMSE = %f \nMean MAE = %f \nMean MAPE = %f %%' % (rmse_cum / len(ticker_symbols),
+                                                                  mae_cum / len(ticker_symbols),
+                                                                  mape_cum / len(ticker_symbols)))
 
 
 def predict_for_timesteps(model: Sequential, days: int, ticker: str) -> pd.DataFrame:
@@ -154,7 +166,7 @@ def predict_for_timesteps(model: Sequential, days: int, ticker: str) -> pd.DataF
     :return: dataframe with predicted values
     """
     prediction = pd.DataFrame()
-    ticker_data = get_data(ticker).iloc[-1].drop('Close', axis=1)
+    ticker_data = get_data(ticker)
     pd.concat((prediction, ticker_data))
     for day in range(1, days + 1):
         prediction_day = model.predict(prediction.iloc[-1])
