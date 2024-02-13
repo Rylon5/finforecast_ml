@@ -1,6 +1,5 @@
 import pandas as pd
 import yfinance as yf
-import seaborn as sns
 import numpy as np
 import matplotlib.pyplot as plt
 import keras
@@ -9,7 +8,6 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolu
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from keras.src.layers import LSTM, Dense
-from IPython.display import display
 
 # making output from pandas more readable
 pd.set_option('display.max_rows', None)
@@ -17,10 +15,11 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.max_colwidth', None)
 
 scaler = MinMaxScaler()
-train_ticker = ['GOOG']
+train_ticker = ['IBM']
 train_tickers = ['NVR', 'AZO', 'AVGO', 'ADBE', 'MSFT', 'GOOG', 'TEAM', 'HLT', 'AMZN', 'GRMN', 'OTTR', 'TEX', 'CSCO',
                  'BEPC', 'PSO', 'INFN', 'KODK', 'KRON', 'AMBO', 'WF', 'OBK', 'VVV', 'VET', 'DDD', 'CTRA', 'RRR', 'CSIQ']
-test_ticker = ['GRIN', 'BHR', 'DEEF', 'WGS', 'CHT', 'BFRG', 'AORT', 'NI', 'LEGN', 'AACT']
+test_ticker = ['GRIN', 'BHR', 'WGS', 'CHT', 'BFRG', 'AORT', 'NI', 'LEGN', 'TMO', 'IGTA', 'NNVC', 'AVNT', 'LYTS', 'INLX',
+               'MS', 'CNP', 'GTY', 'HPE', 'NGL']
 
 
 def main():
@@ -28,8 +27,8 @@ def main():
     data_mult = get_data(train_tickers)
     init_scaler(pd.concat((data_mult, get_data(test_ticker)))['Close'])
     # train_model_single(data)
-    train_model_mult(data_mult)
-    # predict_on_new_dataset(model=keras.saving.load_model('finforecast_single_model.keras'), ticker_symbol=test_ticker)
+    # train_model_mult(data_mult)
+    # predict_on_new_dataset(model=keras.saving.load_model('finforecast_single_model.keras'), ticker_symbols=train_ticker)
     predict_on_new_dataset(model=keras.saving.load_model('finforecast_mult_model.keras'), ticker_symbols=test_ticker)
 
 
@@ -52,9 +51,9 @@ def init_scaler(data: pd.DataFrame):
     :param data: dataframe with data to init the scaler on
     :return:
     """
-    # num = np.arange(-100, 8000)
-    # scaler.fit(num.reshape(-1, 1))
-    scaler.fit(np.array(data).reshape(-1, 1))
+    num = np.arange(-100, 8000)
+    scaler.fit(num.reshape(-1, 1))
+    # scaler.fit(np.array(data).reshape(-1, 1))
 
 
 def build_model(data: pd.DataFrame) -> Sequential:
@@ -73,18 +72,23 @@ def build_model(data: pd.DataFrame) -> Sequential:
     y_test = scaler.transform(np.array(y_test).reshape(-1, 1))
 
     # make model and train it
+    callback = keras.callbacks.EarlyStopping(monitor='loss', patience=7, verbose=1, mode='auto', start_from_epoch=25,
+                                             restore_best_weights=True)
     model = keras.models.Sequential()
-    model.add(LSTM(units=50, return_sequences=True, input_shape=(x_train.shape[1], 1)))
-    model.add(LSTM(units=50, return_sequences=True))
-    model.add(LSTM(units=50, return_sequences=True))
-    model.add(LSTM(units=50))
+    model.add(LSTM(units=200, return_sequences=True, input_shape=(x_train.shape[1], 1)))
+    model.add(LSTM(units=100, return_sequences=True))
+    model.add(LSTM(units=100, return_sequences=True))
+    # model.add(LSTM(units=50, return_sequences=True))
+    model.add(LSTM(units=100))
     model.add(Dense(units=1))
-    model.compile(loss='mean_squared_error', optimizer='adam', metrics=['mape'])
-    model.fit(x_train, y_train, epochs=75)
+    model.compile(loss=keras.losses.mean_absolute_percentage_error,
+                  optimizer=keras.optimizers.Adamax(),
+                  metrics=['mean_absolute_error'],)
+    model.fit(x_train, y_train, epochs=100, callbacks=[callback])
 
     # evaluate the model
     test_loss = model.evaluate(x_test, y_test)
-    print('Test loss = %f \nMAPE = %f %%' % (np.sqrt(test_loss[0]), test_loss[1]))
+    print('Test loss = %f %%\nMAE = %f' % (np.sqrt(test_loss[0]), test_loss[1]))
 
     # testing model and visualizing tests
     y_pred = model.predict(x_test)
@@ -92,7 +96,8 @@ def build_model(data: pd.DataFrame) -> Sequential:
     y_test = scaler.inverse_transform(np.array(y_test).reshape(-1, 1))
     rmse = np.sqrt(mean_squared_error(y_test, y_pred))
     mae = mean_absolute_error(y_test, y_pred)
-    print('RMSE = %f, MAE = %f' % (rmse, mae))
+    mape = mean_absolute_percentage_error(y_test, y_pred)
+    print('RMSE = %f, MAE = %f, MAPE = %f' % (rmse, mae, mape))
     # plt.plot(y_test, label='Actual')
     # plt.plot(y_pred, label='Predicted')
     # plt.legend()
