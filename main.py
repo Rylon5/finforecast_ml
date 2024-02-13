@@ -27,7 +27,7 @@ def main():
     data_mult = get_data(train_tickers)
     init_scaler(pd.concat((data_mult, get_data(test_ticker)))['Close'])
     # train_model_single(data)
-    # train_model_mult(data_mult)
+    train_model_mult(data_mult)
     # predict_on_new_dataset(model=keras.saving.load_model('finforecast_single_model.keras'), ticker_symbols=train_ticker)
     predict_on_new_dataset(model=keras.saving.load_model('finforecast_mult_model.keras'), ticker_symbols=test_ticker)
 
@@ -39,7 +39,7 @@ def get_data(ticker_symbols: [str]) -> pd.DataFrame:
     """
     data = pd.DataFrame()
     for ticker_symbol in ticker_symbols:
-        data = pd.concat((data, yf.Ticker(ticker_symbol).history(period='5y', interval='1d')))
+        data = pd.concat((data, yf.Ticker(ticker_symbol).history(period='10y', interval='1d')))
     data = data.dropna(axis=1)
     data = data[['Open', 'High', 'Low', 'Volume', 'Dividends', 'Stock Splits', 'Close']]
     return data
@@ -84,7 +84,7 @@ def build_model(data: pd.DataFrame) -> Sequential:
     model.compile(loss=keras.losses.mean_absolute_percentage_error,
                   optimizer=keras.optimizers.Adamax(),
                   metrics=['mean_absolute_error'],)
-    model.fit(x_train, y_train, epochs=100, callbacks=[callback])
+    model.fit(x_train, y_train, epochs=100)
 
     # evaluate the model
     test_loss = model.evaluate(x_test, y_test)
