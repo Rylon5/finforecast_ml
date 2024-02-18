@@ -3,11 +3,14 @@ import yfinance as yf
 import numpy as np
 import matplotlib.pyplot as plt
 import keras
+from IPython.core.display_functions import display
 from keras import Sequential
 from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from keras.src.layers import LSTM, Dense
+from datetime import timedelta
+import seaborn as sns
 
 # making output from pandas more readable
 pd.set_option('display.max_rows', None)
@@ -27,9 +30,11 @@ def main():
     data_mult = get_data(train_tickers)
     init_scaler(pd.concat((data_mult, get_data(test_ticker)))['Close'])
     # train_model_single(data)
-    train_model_mult(data_mult)
-    # predict_on_new_dataset(model=keras.saving.load_model('finforecast_single_model.keras'), ticker_symbols=train_ticker)
-    predict_on_new_dataset(model=keras.saving.load_model('finforecast_mult_model.keras'), ticker_symbols=test_ticker)
+    # train_model_mult(data_mult)
+    # predict_on_new_dataset(model=keras.saving.load_model('finforecast_single_model.keras'),
+    #                        ticker_symbols=train_ticker)
+    # predict_on_new_dataset(model=keras.saving.load_model('finforecast_mult_model.keras'), ticker_symbols=['AVNT'])
+    predict_for_timesteps(model=keras.saving.load_model('finforecast_mult_model.keras'), days=30, ticker=['AVNT'])
 
 
 def get_data(ticker_symbols: [str]) -> pd.DataFrame:
@@ -39,9 +44,9 @@ def get_data(ticker_symbols: [str]) -> pd.DataFrame:
     """
     data = pd.DataFrame()
     for ticker_symbol in ticker_symbols:
-        data = pd.concat((data, yf.Ticker(ticker_symbol).history(period='10y', interval='1d')))
+        data = pd.concat((data, yf.Ticker(ticker_symbol).history(period='5y', interval='1d', actions=False)))
     data = data.dropna(axis=1)
-    data = data[['Open', 'High', 'Low', 'Volume', 'Dividends', 'Stock Splits', 'Close']]
+    data = data[['Open', 'High', 'Low', 'Volume', 'Close']]
     return data
 
 
@@ -75,11 +80,11 @@ def build_model(data: pd.DataFrame) -> Sequential:
     callback = keras.callbacks.EarlyStopping(monitor='loss', patience=7, verbose=1, mode='auto', start_from_epoch=25,
                                              restore_best_weights=True)
     model = keras.models.Sequential()
-    model.add(LSTM(units=200, return_sequences=True, input_shape=(x_train.shape[1], 1)))
-    model.add(LSTM(units=100, return_sequences=True))
-    model.add(LSTM(units=100, return_sequences=True))
+    model.add(LSTM(units=400, return_sequences=True, input_shape=(x_train.shape[1], 1)))
+    model.add(LSTM(units=200, return_sequences=True))
+    model.add(LSTM(units=200, return_sequences=True))
     # model.add(LSTM(units=50, return_sequences=True))
-    model.add(LSTM(units=100))
+    model.add(LSTM(units=200))
     model.add(Dense(units=1))
     model.compile(loss=keras.losses.mean_absolute_percentage_error,
                   optimizer=keras.optimizers.Adamax(),
@@ -163,20 +168,31 @@ def predict_on_new_dataset(model: Sequential, ticker_symbols: [str]):
                                                                   mape_cum / len(ticker_symbols)))
 
 
-def predict_for_timesteps(model: Sequential, days: int, ticker: str) -> pd.DataFrame:
+def predict_for_timesteps(model: Sequential, days: int, ticker: [str]) -> pd.DataFrame:
     """
     :param model: Sequential model to predict with
     :param days: number of days to predict for
-    :param ticker: ticker to predict for
+    :param ticker: list of tickers to predict for
     :return: dataframe with predicted values
     """
-    prediction = pd.DataFrame()
     ticker_data = get_data(ticker)
-    pd.concat((prediction, ticker_data))
-    for day in range(1, days + 1):
-        prediction_day = model.predict(prediction.iloc[-1])
-        pd.concat((prediction, prediction_day))
-    ticker_data['Close'] = prediction
+    prediction = ticker_data.tail(days)
+    prediction.reset_index(inplace=True)
+    x_forecast = prediction.copy(deep=True)
+    x_forecast.drop('Close', axis=1, inplace=True)
+    x_forecast.drop('Date', axis=1, inplace=True)
+    for day in range(0, days):
+        x_day = np.array(x_forecast.iloc[day]).reshape(1, 4)
+        prediction_day = scaler.inverse_transform(model.predict(x_day)).flatten()[0]
+        prediction.loc[day, 'Close'] = prediction_day
+        if day < days - 1:
+            prediction.loc[(day + 1), 'Open'] = prediction_day
+        prediction.loc[day, 'Date'] = prediction.loc[day, 'Date'] + timedelta(days=days)
+    plt.figure(figsize=(10, 7.5))
+    # plt.plot(prediction['Close'], label='Predicted', alpha=0.7, color='red')
+    sns.lineplot(data=prediction, x=prediction['Date'], y=prediction['Close'])
+    plt.title(ticker[0])
+    plt.show()
     return prediction
 
 
