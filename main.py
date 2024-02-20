@@ -33,7 +33,7 @@ def main():
     # train_model_mult(data_mult)
     # predict_on_new_dataset(model=keras.saving.load_model('finforecast_single_model.keras'),
     #                        ticker_symbols=train_ticker)
-    # predict_on_new_dataset(model=keras.saving.load_model('finforecast_mult_model.keras'), ticker_symbols=['AVNT'])
+    predict_on_new_dataset(model=keras.saving.load_model('finforecast_mult_model.keras'), ticker_symbols=test_ticker)
     predict_for_timesteps(model=keras.saving.load_model('finforecast_mult_model.keras'), days=30, ticker=['AVNT'])
 
 
@@ -150,7 +150,7 @@ def predict_on_new_dataset(model: Sequential, ticker_symbols: [str]):
         y_pred_test_forecast = scaler.inverse_transform(np.array(y_pred_test_forecast).reshape(-1, 1))
         x_test_forecast['Close'] = y_pred_test_forecast
         y_test_forecast = ticker_test_forecast['Close']
-        # forecast = predict_for_timesteps(model=model, days=30, ticker=ticker_symbols)
+        # forecast = predict_for_timesteps(model=model, days=30, ticker=ticker)
         plt.figure(figsize=(10, 7.5))
         plt.plot(y_test_forecast, label='Actual', color='green')
         plt.plot(x_test_forecast['Close'], label='Predicted', alpha=0.7, color='red')
@@ -174,29 +174,27 @@ def predict_for_timesteps(model: Sequential, days: int, ticker: [str]) -> pd.Dat
     """
     :param model: Sequential model to predict with
     :param days: number of days to predict for
-    :param ticker: list of tickers to predict for
+    :param ticker: ticker to predict for
     :return: dataframe with predicted values
     """
-    predictions = pd.DataFrame
-    for tick in ticker:
-        ticker_data = get_data(tick)
-        prediction = ticker_data.tail(days)
-        prediction.reset_index(inplace=True)
-        x_forecast = prediction.copy(deep=True)
-        x_forecast.drop('Close', axis=1, inplace=True)
-        x_forecast.drop('Date', axis=1, inplace=True)
-        for day in range(0, days):
-            x_day = np.array(x_forecast.iloc[day]).reshape(1, 4)
-            prediction_day = scaler.inverse_transform(model.predict(x_day)).flatten()[0]
-            prediction.loc[day, 'Close'] = prediction_day
-            if day < days - 1:
-                prediction.loc[(day + 1), 'Open'] = prediction_day
-            prediction.loc[day, 'Date'] = prediction.loc[day, 'Date'] + timedelta(days=days)
-    # plt.figure(figsize=(10, 7.5))
+    ticker_data = get_data(ticker)
+    prediction = ticker_data.tail(days)
+    prediction.reset_index(inplace=True)
+    x_forecast = prediction.copy(deep=True)
+    x_forecast.drop('Close', axis=1, inplace=True)
+    x_forecast.drop('Date', axis=1, inplace=True)
+    for day in range(0, days):
+        x_day = np.array(x_forecast.iloc[day]).reshape(1, 4)
+        prediction_day = scaler.inverse_transform(model.predict(x_day)).flatten()[0]
+        prediction.loc[day, 'Close'] = prediction_day
+        if day < days - 1:
+            prediction.loc[(day + 1), 'Open'] = prediction_day
+        prediction.loc[day, 'Date'] = prediction.loc[day, 'Date'] + timedelta(days=days)
+    plt.figure(figsize=(10, 7.5))
     # plt.plot(prediction['Close'], label='Predicted', alpha=0.7, color='red')
-    # sns.lineplot(data=prediction, x=prediction['Date'], y=prediction['Close'], color='blue')
-    # plt.title(ticker[0])
-    # plt.show()
+    sns.lineplot(data=prediction, x=prediction['Date'], y=prediction['Close'], color='blue')
+    plt.title(ticker[0])
+    plt.show()
     return prediction
 
 
