@@ -8,8 +8,8 @@ from keras import Sequential
 from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
-from keras.src.layers import LSTM, Dense
-from datetime import timedelta
+from keras.layers import LSTM, Dense
+from datetime import timedelta, datetime
 import seaborn as sns
 
 # making output from pandas more readable
@@ -34,7 +34,6 @@ def main():
     # predict_on_new_dataset(model=keras.saving.load_model('finforecast_single_model.keras'),
     #                        ticker_symbols=train_ticker)
     predict_on_new_dataset(model=keras.saving.load_model('finforecast_mult_model.keras'), ticker_symbols=test_ticker)
-    predict_for_timesteps(model=keras.saving.load_model('finforecast_mult_model.keras'), days=30, ticker=['AVNT'])
 
 
 def get_data(ticker_symbols: [str]) -> pd.DataFrame:
@@ -58,6 +57,7 @@ def init_scaler(data: pd.DataFrame):
     """
     num = np.arange(-100, 8000)
     scaler.fit(num.reshape(-1, 1))
+    # somehow getting worse results
     # scaler.fit(np.array(data).reshape(-1, 1))
 
 
@@ -150,20 +150,18 @@ def predict_on_new_dataset(model: Sequential, ticker_symbols: [str]):
         y_pred_test_forecast = scaler.inverse_transform(np.array(y_pred_test_forecast).reshape(-1, 1))
         x_test_forecast['Close'] = y_pred_test_forecast
         y_test_forecast = ticker_test_forecast['Close']
-        # forecast = predict_for_timesteps(model=model, days=30, ticker=ticker)
-        plt.figure(figsize=(10, 7.5))
+        forecast = predict_for_timesteps(model=model, days=30, ticker=[ticker])
+        plt.figure(figsize=(15, 5))
         plt.plot(y_test_forecast, label='Actual', color='green')
         plt.plot(x_test_forecast['Close'], label='Predicted', alpha=0.7, color='red')
-        # plt.plot(forecast['Close'], label='Forecasted Value', color='blue')
+        plt.plot(forecast['Date'], forecast['Close'], label='Forecasted Value', color='blue')
         plt.title(ticker)
         plt.legend()
         plt.show()
         rmse = np.sqrt(mean_squared_error(y_test_forecast, y_pred_test_forecast))
         mae = mean_absolute_error(y_test_forecast, y_pred_test_forecast)
         mape = mean_absolute_percentage_error(y_test_forecast, y_pred_test_forecast) * 100
-        rmse_cum = rmse_cum + rmse
-        mae_cum = mae_cum + mae
-        mape_cum = mape_cum + mape
+        rmse_cum, mae_cum, mape_cum = rmse_cum + rmse, mae_cum + mae, mape_cum + mape
         print('Ticker = %s \nRMSE = %f \nMAE = %f \nMAPE = %f %%' % (ticker, rmse, mae, mape))
     print('Mean RMSE = %f \nMean MAE = %f \nMean MAPE = %f %%' % (rmse_cum / len(ticker_symbols),
                                                                   mae_cum / len(ticker_symbols),
@@ -180,6 +178,10 @@ def predict_for_timesteps(model: Sequential, days: int, ticker: [str]) -> pd.Dat
     ticker_data = get_data(ticker)
     prediction = ticker_data.tail(days)
     prediction.reset_index(inplace=True)
+    dates = prediction['Date']
+    prediction = prediction.iloc[::-1]
+    prediction.reset_index(drop=True, inplace=True)
+    prediction['Date'] = dates
     x_forecast = prediction.copy(deep=True)
     x_forecast.drop('Close', axis=1, inplace=True)
     x_forecast.drop('Date', axis=1, inplace=True)
@@ -187,14 +189,13 @@ def predict_for_timesteps(model: Sequential, days: int, ticker: [str]) -> pd.Dat
         x_day = np.array(x_forecast.iloc[day]).reshape(1, 4)
         prediction_day = scaler.inverse_transform(model.predict(x_day)).flatten()[0]
         prediction.loc[day, 'Close'] = prediction_day
+        if prediction_day < prediction.loc[day, 'Low']:
+            prediction.loc[day, 'Low'] = prediction_day
+        elif prediction_day > prediction.loc[day, 'High']:
+            prediction.loc[day, 'High'] = prediction_day
         if day < days - 1:
             prediction.loc[(day + 1), 'Open'] = prediction_day
-        prediction.loc[day, 'Date'] = prediction.loc[day, 'Date'] + timedelta(days=days)
-    plt.figure(figsize=(10, 7.5))
-    # plt.plot(prediction['Close'], label='Predicted', alpha=0.7, color='red')
-    sns.lineplot(data=prediction, x=prediction['Date'], y=prediction['Close'], color='blue')
-    plt.title(ticker[0])
-    plt.show()
+        prediction.loc[day, 'Date'] = prediction['Date'].iloc[-1] + pd.to_timedelta(day + 1, unit='days')
     return prediction
 
 
