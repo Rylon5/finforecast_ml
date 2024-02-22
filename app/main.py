@@ -33,7 +33,7 @@ def main():
     # train_model_mult(data_mult)
     # predict_on_new_dataset(model=keras.saving.load_model('finforecast_single_model.keras'),
     #                        ticker_symbols=train_ticker)
-    predict_on_new_dataset(model=keras.saving.load_model('finforecast_mult_model.keras'), ticker_symbols=test_ticker)
+    predict_on_new_dataset(model=keras.saving.load_model('../finforecast_mult_model.keras'), ticker_symbols=test_ticker)
 
 
 def get_data(ticker_symbols: [str]) -> pd.DataFrame:

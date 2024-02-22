@@ -1,6 +1,6 @@
 import pytest
 
-import main
+from app import main
 
 
 def test_get_data_not_empty():
