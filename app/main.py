@@ -26,11 +26,11 @@ test_ticker = ['GRIN', 'BHR', 'WGS', 'CHT', 'BFRG', 'AORT', 'NI', 'LEGN', 'TMO',
 
 
 def main():
-    data = get_data(train_ticker)
+    # data = get_data(train_ticker)
     data_mult = get_data(train_tickers)
     init_scaler(pd.concat((data_mult, get_data(test_ticker)))['Close'])
     # train_model_single(data)
-    # train_model_mult(data_mult)
+    train_model_mult(data_mult)
     # predict_on_new_dataset(model=keras.saving.load_model('finforecast_single_model.keras'),
     #                        ticker_symbols=train_ticker)
     predict_on_new_dataset(model=keras.saving.load_model('../finforecast_mult_model.keras'), ticker_symbols=test_ticker)
@@ -88,7 +88,7 @@ def build_model(data: pd.DataFrame) -> Sequential:
     model.add(Dense(units=1))
     model.compile(loss=keras.losses.mean_absolute_percentage_error,
                   optimizer=keras.optimizers.Adamax(),
-                  metrics=['mean_absolute_error'],)
+                  metrics=['mean_absolute_error'], )
     model.fit(x_train, y_train, epochs=100)
 
     # evaluate the model
@@ -143,6 +143,7 @@ def predict_on_new_dataset(model: Sequential, ticker_symbols: [str]):
     :return:
     """
     rmse_cum, mae_cum, mape_cum = 0, 0, 0
+    # compute predictions for every test ticker
     for ticker in ticker_symbols:
         ticker_test_forecast = get_data([ticker])
         x_test_forecast = ticker_test_forecast.drop('Close', axis=1)
@@ -151,6 +152,7 @@ def predict_on_new_dataset(model: Sequential, ticker_symbols: [str]):
         x_test_forecast['Close'] = y_pred_test_forecast
         y_test_forecast = ticker_test_forecast['Close']
         forecast = predict_for_timesteps(model=model, days=30, ticker=[ticker])
+        # plot results
         plt.figure(figsize=(15, 5))
         plt.plot(y_test_forecast, label='Actual', color='green')
         plt.plot(x_test_forecast['Close'], label='Predicted', alpha=0.7, color='red')
@@ -158,9 +160,11 @@ def predict_on_new_dataset(model: Sequential, ticker_symbols: [str]):
         plt.title(ticker)
         plt.legend()
         plt.show()
+        # calculate errors for every single test ticker
         rmse = np.sqrt(mean_squared_error(y_test_forecast, y_pred_test_forecast))
         mae = mean_absolute_error(y_test_forecast, y_pred_test_forecast)
         mape = mean_absolute_percentage_error(y_test_forecast, y_pred_test_forecast) * 100
+        # calculate cumulative errors over the whole test set
         rmse_cum, mae_cum, mape_cum = rmse_cum + rmse, mae_cum + mae, mape_cum + mape
         print('Ticker = %s \nRMSE = %f \nMAE = %f \nMAPE = %f %%' % (ticker, rmse, mae, mape))
     print('Mean RMSE = %f \nMean MAE = %f \nMean MAPE = %f %%' % (rmse_cum / len(ticker_symbols),
@@ -185,6 +189,7 @@ def predict_for_timesteps(model: Sequential, days: int, ticker: [str]) -> pd.Dat
     x_forecast = prediction.copy(deep=True)
     x_forecast.drop('Close', axis=1, inplace=True)
     x_forecast.drop('Date', axis=1, inplace=True)
+    # predict for the next days
     for day in range(0, days):
         x_day = np.array(x_forecast.iloc[day]).reshape(1, 4)
         prediction_day = scaler.inverse_transform(model.predict(x_day)).flatten()[0]
@@ -196,6 +201,7 @@ def predict_for_timesteps(model: Sequential, days: int, ticker: [str]) -> pd.Dat
         if day < days - 1:
             prediction.loc[(day + 1), 'Open'] = prediction_day
         prediction.loc[day, 'Date'] = prediction['Date'].iloc[-1] + pd.to_timedelta(day + 1, unit='days')
+        print(prediction['Close'])
     return prediction
 
 
